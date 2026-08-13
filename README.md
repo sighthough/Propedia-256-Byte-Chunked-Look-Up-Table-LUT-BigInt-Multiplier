@@ -3,7 +3,12 @@
 
 Propedia 256 is an arbitrary-precision multiplication engine designed to accelerate software-emulated BigInt math. By shifting processing from bit-by-bit loops to Base-256 (byte-wise) matrix multiplication, it reduces loop iterations by 87.5% while keeping memory consumption bounded at a fixed 128 KB.
 
-demo showcasing its speed here compared to other methods all done in software for fair measurments [here](https://sighthough.github.io/Propedia-256-Byte-Chunked-Look-Up-Table-LUT-BigInt-Multiplier/)
+
+demo showcasing its speed  [here](https://sighthough.github.io/Propedia-256-Byte-Chunked-Look-Up-Table-LUT-BigInt-Multiplier/)
+compared to other methods all done in software for fair measurments
+
+
+
 
 1. The Core ArchitectureTraditional software multiplication usually falls into one of two extremes:Bit-by-bit shift-and-add: Low memory, but extremely slow ($1024$ loop passes for $1024$-bit numbers).Full word Look-Up Tables: Unrealistic memory consumption ($65,536 \times 65,536$ entries for 16-bit chunks requires 8.5 GB of RAM).Propedia 256 solves this by decomposing arbitrarily large integers into 8-bit byte chunks ($0 \le c \le 255$) and computing partial products using a precomputed $256 \times 256$ Lookup Table.Input Number A (e.g. 256-bit)  --> [ A0 ][ A1 ][ A2 ] ... [ A31 ]  (32 Bytes)
 
