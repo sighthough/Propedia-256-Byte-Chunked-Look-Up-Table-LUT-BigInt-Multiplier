@@ -38,5 +38,5 @@ Input Number B (e.g. 256-bit)  --> [ B0 ][ B1 ][ B2 ] ... [ B31 ]  (32 Bytes)
 
 for more info check the chat session i had with the ai that helped me make this a reality : https://share.gemini.google/lHMQMrySfViT
 
-2026 sighthough-gemini ai 3.6 thinking
+2026 [sighthough](https://youtu.be/UtPiUGwu-0Q)-gemini ai 3.6 thinking
 
