@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Propedia-256 vs Classical BigInt Multiplier Benchmark</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #161f30;
+      --accent: #38bdf8;
+      --accent-alt: #34d399;
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+      --border: #24334a;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 2rem;
+    }
+    .container { max-width: 1000px; margin: 0 auto; }
+    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--accent); }
+    p { color: var(--text-dim); font-size: 0.95rem; line-height: 1.5; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      gap: 0.5rem;
+    }
+    select, button {
+      background: #0b0f19;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.65rem 1rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    button {
+      background: linear-gradient(135deg, var(--accent), var(--accent-alt));
+      color: #000;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:hover { opacity: 0.9; }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .progress-bar-container {
+      width: 100%;
+      background: #0b0f19;
+      border: 1px solid var(--border);
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+      transition: width 0.1s linear;
+    }
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .metric {
+      background: #0b0f19;
+      border: 1px solid var(--border);
+      padding: 1.25rem;
+      border-radius: 8px;
+    }
+    .metric-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+    }
+    .metric-value { font-size: 1.75rem; font-weight: bold; margin-top: 0.25rem; }
+    .metric-sub { font-size: 0.8rem; color: var(--accent-alt); margin-top: 0.25rem; }
+    .log-area {
+      background: #05070d;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      height: 160px;
+      overflow-y: auto;
+      margin-top: 1.5rem;
+      color: #a7f3d0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Propedia-256 Benchmark</h1>
+    <p>Comparing Classical Bitwise Shift-and-Add vs Propedia-256 Byte-Level LUT Multiplication.</p>
+
+    <div class="card">
+      <div class="controls">
+        <label>
+          Bit Precision:
+          <select id="precision">
+            <option value="1024">1024-bit (128 B)</option>
+            <option value="4096">4096-bit (512 B)</option>
+            <option value="16384" selected>16384-bit (2048 B)</option>
+          </select>
+        </label>
+        <label>
+          Batch Size:
+          <select id="iterations">
+            <option value="500">500 passes</option>
+            <option value="2000" selected>2,000 passes</option>
+            <option value="10000">10,000 passes</option>
+          </select>
+        </label>
+        <label style="justify-content: flex-end;">
+          <span>&nbsp;</span>
+          <button id="runBtn" onclick="runBenchmark()">Run Benchmark</button>
+        </label>
+      </div>
+
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+
+      <div class="results-grid">
+        <div class="metric">
+          <div class="metric-title">Classical Bitwise Stream</div>
+          <div class="metric-value" id="classicalTime">-- ms</div>
+          <div class="metric-sub" id="classicalOps">0 ops/sec</div>
+        </div>
+        <div class="metric">
+          <div class="metric-title">Propedia-256 LUT Stream</div>
+          <div class="metric-value" id="propediaTime" style="color: var(--accent-alt);">-- ms</div>
+          <div class="metric-sub" id="propediaOps">0 ops/sec</div>
+        </div>
+      </div>
+
+      <div class="log-area" id="log">Ready to evaluate memory performance...</div>
+    </div>
+  </div>
+
+  <script>
+    // UI Helpers
+    function log(msg) {
+      const el = document.getElementById('log');
+      el.innerText += '\n' + msg;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function setProgress(percent) {
+      document.getElementById('progressBar').style.width = `${percent}%`;
+    }
+
+    /**
+     * ASYNC YIELD MECHANISM
+     * Releases control back to the browser's main Event Loop for 0ms.
+     * Prevents long-running JavaScript execution from triggering "Page Unresponsive" dialogs.
+     */
+    const yieldMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    // =========================================================================
+    // MODULE 1: PROPEDIA-256 MEMORY MATRIX & LOOKUP TABLE (LUT)
+    // =========================================================================
+
+    /**
+     * Precomputed 256x256 Multiplication Lookup Table.
+     * Takes 128 KB of RAM in L1 cache (256 * 256 * 2 bytes).
+     * Replaces runtime byte multiplication (A * B) with bitwise memory offsets: (A << 8) | B
+     */
+    const PROPEDIA_LUT = new Uint16Array(256 * 256);
+    for (let i = 0; i < 256; i++) {
+      for (let j = 0; j < 256; j++) {
+        PROPEDIA_LUT[(i << 8) | j] = i * j;
+      }
+    }
+
+    /**
+     * PROPEDIA-256 CORE MULTIPLICATION KERNEL
+     * Operates on arbitrary byte arrays of any length (e.g. 2048 bytes for 16,384-bit numbers)
+     */
+    function propediaMultiply(aBytes, bBytes) {
+      const lenA = aBytes.length;
+      const lenB = bBytes.length;
+      
+      // Accumulator grid holds interim products up to 32 bits before carrying.
+      const grid = new Uint32Array(lenA + lenB);
+
+      // Byte-wise cross multiplication using L1 lookup
+      for (let i = 0; i < lenA; i++) {
+        const valA = aBytes[i];
+        if (valA === 0) continue; // SPARSE SKIP: Bypass zero-bytes to save clock cycles
+
+        const rowOffset = valA << 8; // Bit shift acts as row index lookup
+        for (let j = 0; j < lenB; j++) {
+          const valB = bBytes[j];
+          if (valB === 0) continue; // SPARSE SKIP
+
+          // Single memory read replacing math computation
+          grid[i + j] += PROPEDIA_LUT[rowOffset | valB];
+        }
+      }
+
+      // Single-pass deferred carry resolution
+      const result = new Uint8Array(lenA + lenB);
+      let carry = 0;
+      for (let k = 0; k < grid.length; k++) {
+        const sum = grid[k] + carry;
+        result[k] = sum & 0xFF;    // Low byte extracted
+        carry = sum >> 8;          // Upper bits carried to next position
+      }
+      return result;
+    }
+
+    // =========================================================================
+    // MODULE 2: CLASSICAL BITWISE BASELINE (Shift-and-Add Algorithm)
+    // =========================================================================
+
+    /**
+     * Standard software bitwise multiplication.
+     * Tests bit-by-bit shifting across binary input buffers.
+     */
+    function classicalMultiply(aBytes, bBytes) {
+      const totalBits = aBytes.length * 8;
+      const result = new Uint8Array(aBytes.length + bBytes.length);
+
+      for (let i = 0; i < totalBits; i++) {
+        const byteIdx = i >> 3; // Equivalent to Math.floor(i / 8)
+        const bitIdx = i & 7;   // Equivalent to i % 8
+
+        // Read single bit value at offset
+        if ((aBytes[byteIdx] >> bitIdx) & 1) {
+          let carry = 0;
+          for (let j = 0; j < bBytes.length; j++) {
+            const sum = result[byteIdx + j] + bBytes[j] + carry;
+            result[byteIdx + j] = sum & 0xFF;
+            carry = sum >> 8;
+          }
+          if (carry) result[byteIdx + bBytes.length] += carry;
+        }
+      }
+      return result;
+    }
+
+    // =========================================================================
+    // MODULE 3: NON-BLOCKING ASYNC BENCHMARK HARNESS
+    // =========================================================================
+
+    async function runBenchmark() {
+      const btn = document.getElementById('runBtn');
+      btn.disabled = true;
+      setProgress(0);
+
+      const bits = parseInt(document.getElementById('precision').value);
+      const iters = parseInt(document.getElementById('iterations').value);
+      const numBytes = bits / 8;
+
+      log(`--- Starting Test (${bits}-bit, ${iters} passes) ---`);
+
+      // Prepare sample datasets
+      log("Generating cryptographically random byte arrays...");
+      const rawStoreA = [];
+      const rawStoreB = [];
+      for (let i = 0; i < iters; i++) {
+        const a = new Uint8Array(numBytes);
+        const b = new Uint8Array(numBytes);
+        crypto.getRandomValues(a);
+        crypto.getRandomValues(b);
+        rawStoreA.push(a);
+        rawStoreB.push(b);
+      }
+
+      // Dynamic chunking: Bigger bit sizes yield control back to the UI more often
+      const chunkSize = bits >= 16384 ? Math.min(25, iters) : Math.min(200, iters);
+
+      // --- PHASE 1: CLASSICAL BITWISE STREAM ---
+      log("Executing Classical Bitwise Pipeline...");
+      const t0 = performance.now();
+      for (let i = 0; i < iters; i++) {
+        classicalMultiply(rawStoreA[i], rawStoreB[i]);
+
+        // Break up long CPU operations to keep the UI smooth
+        if (i % chunkSize === 0) {
+          setProgress((i / iters) * 50);
+          await yieldMain();
+        }
+      }
+      const t1 = performance.now();
+      const classicalTime = t1 - t0;
+
+      // --- PHASE 2: PROPEDIA-256 LUT STREAM ---
+      log("Executing Propedia-256 Memory LUT Pipeline...");
+      const t2 = performance.now();
+      for (let i = 0; i < iters; i++) {
+        propediaMultiply(rawStoreA[i], rawStoreB[i]);
+
+        if (i % chunkSize === 0) {
+          setProgress(50 + (i / iters) * 50);
+          await yieldMain();
+        }
+      }
+      const t3 = performance.now();
+      const propediaTime = t3 - t2;
+
+      // Render Outputs
+      setProgress(100);
+      document.getElementById('classicalTime').innerText = `${classicalTime.toFixed(1)} ms`;
+      document.getElementById('propediaTime').innerText = `${propediaTime.toFixed(1)} ms`;
+
+      const cOpsSec = Math.round((iters / classicalTime) * 1000);
+      const pOpsSec = Math.round((iters / propediaTime) * 1000);
+
+      document.getElementById('classicalOps').innerText = `${cOpsSec.toLocaleString()} ops/sec`;
+      document.getElementById('propediaOps').innerText = `${pOpsSec.toLocaleString()} ops/sec`;
+
+      const speedup = (classicalTime / propediaTime).toFixed(2);
+      log(`Complete! Propedia-256 runs ${speedup}x faster than classical bitwise multiplication at ${bits}-bits.`);
+      btn.disabled = false;
+    }
+  </script>
+</body>
+</html>
