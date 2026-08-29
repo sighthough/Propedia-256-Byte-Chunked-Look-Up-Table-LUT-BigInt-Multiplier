@@ -5,6 +5,7 @@ Propedia 256 is an arbitrary-precision multiplication engine designed to acceler
 
 
 demo showcasing its speed  [here](https://sighthough.github.io/Propedia-256-Byte-Chunked-Look-Up-Table-LUT-BigInt-Multiplier/)
+demo showcasing its throroughput [here](https://sighthough.github.io/Propedia-256-Byte-Chunked-Look-Up-Table-LUT-BigInt-Multiplier/propedia256/)
 compared to other methods all done in software for fair measurments
 
 
